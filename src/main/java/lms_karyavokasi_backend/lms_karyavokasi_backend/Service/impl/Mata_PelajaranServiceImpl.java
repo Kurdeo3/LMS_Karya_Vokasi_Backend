@@ -106,12 +106,12 @@ public class Mata_PelajaranServiceImpl implements Mata_PelajaranService{
 
     @Override
     public Mata_PelajaranResponse createMataPelajaran(Mata_PelajaranRequest request, MultipartFile thumbnailFile) {
-        // 1️⃣ Buat dulu object baru
+        // 1 Buat dulu object baru
         Mata_Pelajaran mp = new Mata_Pelajaran();
         mp.setNamaMataPelajaran(request.getNamaMataPelajaran());
         mp.setDeskripsi(request.getDeskripsi());
 
-        // 2️⃣ Upload thumbnail dulu (jika ada)
+        // 2 Upload thumbnail dulu (jika ada)
         if (thumbnailFile != null && !thumbnailFile.isEmpty()) {
             try {
                 mp.setThumbnail(fileStorageService.saveFile(thumbnailFile, "mata_pelajaran"));
@@ -122,7 +122,7 @@ public class Mata_PelajaranServiceImpl implements Mata_PelajaranService{
             throw new BadRequestException("Thumbnail wajib diisi");
         }
 
-        // 3️⃣ Ambil E_Katalog terkait
+        // 3 Ambil E_Katalog terkait
         if (request.getEKatalogId() == null) {
             throw new BadRequestException("eKatalogId wajib diisi saat membuat Mata Pelajaran");
         }
@@ -133,7 +133,7 @@ public class Mata_PelajaranServiceImpl implements Mata_PelajaranService{
         checkPermissionFromEKatalog(eKatalog.getId());
         mp.setEKatalog(eKatalog);
 
-        // 4️⃣ Ambil Kategori jika ada
+        // 4 Ambil Kategori jika ada
         if (request.getKategoriId() != null) {
             mp.setKategoriMataPelajaran(
                     kategoriRepository.findById(request.getKategoriId())
@@ -141,7 +141,7 @@ public class Mata_PelajaranServiceImpl implements Mata_PelajaranService{
             );
         }
 
-        // 5️⃣ Simpan ke DB
+        // 5 Simpan ke DB
         Mata_Pelajaran saved = mataPelajaranRepository.save(mp);
         return convertToResponse(saved);
     }

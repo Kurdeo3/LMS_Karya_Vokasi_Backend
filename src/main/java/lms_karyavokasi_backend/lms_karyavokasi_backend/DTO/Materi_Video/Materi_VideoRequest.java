@@ -6,6 +6,5 @@ import lombok.Data;
 public class Materi_VideoRequest {
     private String judul;
     private String deskripsi;
-    private String urlVideo;
     private Long topikId;
 }

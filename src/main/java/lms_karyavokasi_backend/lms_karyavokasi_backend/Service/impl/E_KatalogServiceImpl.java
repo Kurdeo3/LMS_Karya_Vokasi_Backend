@@ -23,6 +23,7 @@ import lms_karyavokasi_backend.lms_karyavokasi_backend.Repository.E_KatalogRepos
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Repository.Kategori_E_KatalogRepository;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.E_KatalogService;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.PengajarService;
+import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.PermissionChecker;
 
 @Service
 public class E_KatalogServiceImpl implements E_KatalogService{
@@ -39,22 +40,8 @@ public class E_KatalogServiceImpl implements E_KatalogService{
     @Autowired
     private FileStorageService fileStorageService;
 
-    private void checkPermission(E_Katalog e) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-
-        boolean isAdmin = auth.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMINISTRATOR"));
-
-        if (isAdmin) return; // admin bebas
-
-        // ambil pengajar login sekarang
-        Pengajar currentPengajar = pengajarService.getCurrentPengajar();
-
-        if (!e.getPengajar().getId().equals(currentPengajar.getId())) {
-            throw new AccessDeniedException("Anda tidak punya akses ke E_Katalog ini");
-        }
-    }
-
+    @Autowired
+    private PermissionChecker permissionChecker;
 
     private E_KatalogResponse convertToResponse(E_Katalog e) {
         E_KatalogResponse response = new E_KatalogResponse();
@@ -139,7 +126,7 @@ public class E_KatalogServiceImpl implements E_KatalogService{
         E_Katalog e = eKatalogRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("E_Katalog", id));
 
-        checkPermission(e);
+        permissionChecker.checkEKatalogPengajar(id);
 
         if (request.getJudul_e_katalog() != null) e.setJudul_e_katalog(request.getJudul_e_katalog());
         if (request.getDeskripsi() != null) e.setDeskripsi(request.getDeskripsi());
@@ -174,7 +161,7 @@ public class E_KatalogServiceImpl implements E_KatalogService{
         E_Katalog e = eKatalogRepository.findById(id)
             .orElseThrow(() -> new NotFoundException("E_Katalog", id));
             
-        checkPermission(e);
+        permissionChecker.checkEKatalogPengajar(id);
         fileStorageService.deleteFile(e.getThumbnail());
         eKatalogRepository.deleteById(id);
     }

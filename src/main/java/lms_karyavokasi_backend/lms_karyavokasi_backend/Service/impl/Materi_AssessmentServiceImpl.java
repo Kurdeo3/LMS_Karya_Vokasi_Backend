@@ -7,12 +7,12 @@ import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Soal_Assessment.Soal_AssessmentRequest;
-import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Soal_Assessment.Soal_AssessmentResponse;
-import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Opsi_Jawaban.Opsi_JawabanRequest;
-import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Opsi_Jawaban.Opsi_JawabanResponse;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Materi_Assessment.Materi_AssessmentRequest;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Materi_Assessment.Materi_AssessmentResponse;
+import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Opsi_Jawaban.Opsi_JawabanRequest;
+import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Opsi_Jawaban.Opsi_JawabanResponse;
+import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Soal_Assessment.Soal_AssessmentRequest;
+import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Soal_Assessment.Soal_AssessmentResponse;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Exception.NotFoundException;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Model.Materi_Assessment;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Model.Opsi_Jawaban;
@@ -21,6 +21,7 @@ import lms_karyavokasi_backend.lms_karyavokasi_backend.Model.Topik_Mata_Pelajara
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Repository.Materi_AssessmentRepository;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Repository.Topik_Mata_PelajaranRepository;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.Materi_AssessmentService;
+import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.PermissionChecker;
 
 @Service
 public class Materi_AssessmentServiceImpl implements Materi_AssessmentService{
@@ -29,6 +30,9 @@ public class Materi_AssessmentServiceImpl implements Materi_AssessmentService{
 
     @Autowired
     private Topik_Mata_PelajaranRepository topikMataPelajaranRepository;
+
+    @Autowired
+    private PermissionChecker permissionChecker;
 
     private Materi_AssessmentResponse convertToResponse(Materi_Assessment materi) {
         Materi_AssessmentResponse res = new Materi_AssessmentResponse();
@@ -68,6 +72,8 @@ public class Materi_AssessmentServiceImpl implements Materi_AssessmentService{
 
     @Override
     public Materi_AssessmentResponse create(Materi_AssessmentRequest request) {
+        permissionChecker.checkMateriAssessmentPengajar(request.getTopikId());
+
         Materi_Assessment materi = new Materi_Assessment();
         materi.setJudul(request.getJudul());
         materi.setDeskripsi(request.getDeskripsi());
@@ -119,15 +125,11 @@ public class Materi_AssessmentServiceImpl implements Materi_AssessmentService{
         Materi_Assessment materi = materiAssessmentRepository.findById(id)
             .orElseThrow(() -> new NotFoundException("Materi Assessment ", id));
 
+        permissionChecker.checkMateriAssessmentPengajar(materi.getTopik().getId());
+
         if (request.getJudul() != null ) materi.setJudul(request.getJudul());
         if (request.getDeskripsi() != null ) materi.setDeskripsi(request.getDeskripsi());
         if (request.getTipe() != null ) materi.setTipe(request.getTipe());
-
-        if (request.getTopikId() != null ) {
-            Topik_Mata_Pelajaran topik = topikMataPelajaranRepository.findById(request.getTopikId())
-                .orElseThrow(() -> new NotFoundException("Topik", request.getTopikId()));
-            materi.setTopik(topik);
-        }
 
         if (request.getSoalList() != null) {
             List<Soal_Assessment> soalFinalList = new ArrayList<>();
@@ -190,6 +192,7 @@ public class Materi_AssessmentServiceImpl implements Materi_AssessmentService{
     public void delete (Long id) {
         Materi_Assessment materi = materiAssessmentRepository.findById(id)
             .orElseThrow(() -> new NotFoundException("Materi Assessment ", id));
+        permissionChecker.checkMateriAssessmentPengajar(materi.getTopik().getId());
         materiAssessmentRepository.delete(materi);
     }
 }

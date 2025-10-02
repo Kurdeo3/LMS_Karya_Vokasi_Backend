@@ -8,16 +8,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import lms_karyavokasi_backend.lms_karyavokasi_backend.FileStorageService;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Materi_Teks.Materi_TeksRequest;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Materi_Teks.Materi_TeksResponse;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Exception.BadRequestException;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Exception.NotFoundException;
+import lms_karyavokasi_backend.lms_karyavokasi_backend.FileStorageService;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Model.Materi_Teks;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Model.Topik_Mata_Pelajaran;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Repository.Materi_TeksRepository;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Repository.Topik_Mata_PelajaranRepository;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.Materi_TeksService;
+import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.PermissionChecker;
 
 @Service
 public class Materi_TeksServiceImpl implements Materi_TeksService{
@@ -30,6 +31,9 @@ public class Materi_TeksServiceImpl implements Materi_TeksService{
 
     @Autowired
     private FileStorageService fileStorageService;
+
+    @Autowired
+    private PermissionChecker permissionChecker;
 
     private Materi_TeksResponse convertToResponse(Materi_Teks materi_Teks) {
         Materi_TeksResponse materiRes = new Materi_TeksResponse();
@@ -56,6 +60,11 @@ public class Materi_TeksServiceImpl implements Materi_TeksService{
             throw new BadRequestException("Deskripsi wajib diisi");
         }
 
+        Topik_Mata_Pelajaran topik = topikMataPelajaranRepository.findById(request.getTopikId())
+            .orElseThrow(() -> new NotFoundException("Topik Mata Pelajaran ", request.getTopikId()));
+
+        permissionChecker.checkTopikPengajar(topik.getId());
+
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("File materi wajib diupload");
         }
@@ -72,9 +81,6 @@ public class Materi_TeksServiceImpl implements Materi_TeksService{
             throw new BadRequestException("Gagal upload file materi");
         }
 
-        Topik_Mata_Pelajaran topik = topikMataPelajaranRepository.findById(request.getTopikId())
-            .orElseThrow(() -> new NotFoundException("Topik Mata Pelajaran ", request.getTopikId()));
-
         Materi_Teks materi = new Materi_Teks();
         materi.setJudul(request.getJudul());
         materi.setDeskripsi(request.getDeskripsi());
@@ -86,8 +92,11 @@ public class Materi_TeksServiceImpl implements Materi_TeksService{
 
     @Override
     public Materi_TeksResponse update(Long id, Materi_TeksRequest request, MultipartFile file) {
+
         Materi_Teks materi = materiTeksRepository.findById(id)
             .orElseThrow(() -> new NotFoundException("Materi Teks ", id));
+
+        permissionChecker.checkMateriTeksPengajar(materi.getTopik().getId());
 
         if (request.getJudul() != null) materi.setJudul(request.getJudul());
         if (request.getDeskripsi() != null) materi.setDeskripsi(request.getDeskripsi());
@@ -109,12 +118,6 @@ public class Materi_TeksServiceImpl implements Materi_TeksService{
             }
         }
 
-        if (request.getTopikId() != null) {
-            Topik_Mata_Pelajaran topik = topikMataPelajaranRepository.findById(request.getTopikId())
-                .orElseThrow(() -> new NotFoundException("Topik Mata Pelajaran", request.getTopikId()));
-            materi.setTopik(topik);
-        }
-
         return convertToResponse(materiTeksRepository.save(materi));
     }
 
@@ -122,6 +125,7 @@ public class Materi_TeksServiceImpl implements Materi_TeksService{
     public void delete(Long id) {
         Materi_Teks materi = materiTeksRepository.findById(id)
             .orElseThrow(() -> new NotFoundException("Materi Teks ", id));
+        permissionChecker.checkMateriTeksPengajar(materi.getTopik().getId());
         fileStorageService.deleteFile(materi.getUrlTeks());
         materiTeksRepository.delete(materi);
     }

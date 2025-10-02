@@ -8,16 +8,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import lms_karyavokasi_backend.lms_karyavokasi_backend.FileStorageService;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Materi_Video.Materi_VideoRequest;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Materi_Video.Materi_VideoResponse;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Exception.BadRequestException;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Exception.NotFoundException;
+import lms_karyavokasi_backend.lms_karyavokasi_backend.FileStorageService;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Model.Materi_Video;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Model.Topik_Mata_Pelajaran;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Repository.Materi_VideoRepository;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Repository.Topik_Mata_PelajaranRepository;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.Materi_VideoService;
+import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.PermissionChecker;
 
 @Service
 public class Materi_VideoServiceImpl implements Materi_VideoService{
@@ -30,6 +31,9 @@ public class Materi_VideoServiceImpl implements Materi_VideoService{
 
     @Autowired
     private FileStorageService fileStorageService;
+
+    @Autowired
+    private PermissionChecker permissionChecker;
 
     private Materi_VideoResponse convertToResponse(Materi_Video materi) {
         Materi_VideoResponse materiRespon = new Materi_VideoResponse();
@@ -56,6 +60,11 @@ public class Materi_VideoServiceImpl implements Materi_VideoService{
             throw new BadRequestException ("Deskripsi wajib diisi");
         }
 
+        Topik_Mata_Pelajaran topik = topikMataPelajaranRepository.findById(request.getTopikId())
+            .orElseThrow(() -> new NotFoundException("Topik Mata Pelajaran ", request.getTopikId()));
+
+        permissionChecker.checkTopikPengajar(topik.getId());
+
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("File materi wajib diupload");
         }
@@ -71,9 +80,6 @@ public class Materi_VideoServiceImpl implements Materi_VideoService{
         } catch (IOException ex) {
             throw new BadRequestException("Gagal upload file video");
         }
-
-        Topik_Mata_Pelajaran topik = topikMataPelajaranRepository.findById(request.getTopikId())
-            .orElseThrow(() -> new NotFoundException("Topik Mata Pelajaran ", request.getTopikId()));
         
         Materi_Video materi = new Materi_Video();
         materi.setJudul(request.getJudul());
@@ -86,8 +92,11 @@ public class Materi_VideoServiceImpl implements Materi_VideoService{
 
     @Override
     public Materi_VideoResponse update(Long id, Materi_VideoRequest request, MultipartFile file) {
+
         Materi_Video materi = materiVideoRepository.findById(id)
             .orElseThrow(() -> new NotFoundException("Materi Video ", id));
+
+        permissionChecker.checkMateriVideoPengajar(materi.getTopik().getId());
 
         if (request.getJudul() != null) materi.setJudul(request.getJudul());
         if (request.getDeskripsi() != null) materi.setDeskripsi(request.getDeskripsi());
@@ -109,12 +118,6 @@ public class Materi_VideoServiceImpl implements Materi_VideoService{
             }
         }
 
-        if (request.getTopikId() != null) {
-            Topik_Mata_Pelajaran topik = topikMataPelajaranRepository.findById(request.getTopikId())
-                .orElseThrow(() -> new NotFoundException("Topik Mata Pelajaran ", request.getTopikId()));
-            materi.setTopik(topik);
-        }
-
         return convertToResponse (materiVideoRepository.save(materi));
     }
 
@@ -122,6 +125,7 @@ public class Materi_VideoServiceImpl implements Materi_VideoService{
     public void delete(Long id) {
         Materi_Video materi = materiVideoRepository.findById(id)
             .orElseThrow(() -> new NotFoundException("Materi Video ", id));
+        permissionChecker.checkMateriVideoPengajar(materi.getTopik().getId());
         fileStorageService.deleteFile(materi.getUrlVideo());
         materiVideoRepository.delete(materi);
     }

@@ -4,9 +4,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import lms_karyavokasi_backend.lms_karyavokasi_backend.DTO.Topik_Mata_Pelajaran.Topik_Mata_PelajaranRequest;
@@ -17,7 +14,7 @@ import lms_karyavokasi_backend.lms_karyavokasi_backend.Model.Mata_Pelajaran;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Model.Topik_Mata_Pelajaran;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Repository.Mata_PelajaranRepository;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Repository.Topik_Mata_PelajaranRepository;
-import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.PengajarService;
+import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.PermissionChecker;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.Topik_Mata_PelajaranService;
 
 @Service
@@ -30,49 +27,7 @@ public class Topik_Mata_PelajaranServiceImpl implements Topik_Mata_PelajaranServ
     private Mata_PelajaranRepository mataPelajaranRepository;
 
     @Autowired
-    private PengajarService pengajarService;
-
-    private void checkPermission(Topik_Mata_Pelajaran tmp) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-
-        boolean isAdmin = auth.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMINISTRATOR"));
-
-        if (isAdmin) return; // admin bebas
-
-        if (tmp.getMataPelajaran() == null || tmp.getMataPelajaran().getEKatalog().getPengajar() == null) {
-            throw new AccessDeniedException("Topik tidak memiliki pengajar yang valid (hanya admin yang dapat mengubah)");
-        }
-
-        Long currentPengajarId = pengajarService.getCurrentPengajar().getId();
-        if (!tmp.getMataPelajaran().getEKatalog().getPengajar().getId().equals(currentPengajarId)) {
-            throw new AccessDeniedException("Anda tidak punya akses ke Topik ini");
-        }
-    }
-
-    private void checkPermissionFromMataPelajaranKatalog(Long mataPelajaranId) {
-        Mata_Pelajaran mataPelajaran = mataPelajaranRepository.findById(mataPelajaranId)
-                .orElseThrow(() -> new NotFoundException("Mata Pelajaran", mataPelajaranId));
-        if (mataPelajaran.getEKatalog().getPengajar() == null) {
-            // jika tidak ada pengajar → hanya admin boleh
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            boolean isAdmin = auth.getAuthorities().stream()
-                    .anyMatch(a -> a.getAuthority().equals("ROLE_ADMINISTRATOR"));
-            if (!isAdmin) throw new AccessDeniedException("Mata Pelajaran tidak punya pengajar, hanya admin bisa menautkan");
-            return;
-        }
-
-        Long ownerPengajarId = mataPelajaran.getEKatalog().getPengajar().getId();
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        boolean isAdmin = auth.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMINISTRATOR"));
-        if (isAdmin) return;
-
-        Long currentPengajarId = pengajarService.getCurrentPengajar().getId();
-        if (!currentPengajarId.equals(ownerPengajarId)) {
-            throw new AccessDeniedException("Anda tidak punya akses terhadap Mata Pelajaran ini");
-        }
-    }
+    private PermissionChecker permissionChecker;
 
     private Topik_Mata_PelajaranResponse convertToResponse(Topik_Mata_Pelajaran mp) {
         Topik_Mata_PelajaranResponse response = new Topik_Mata_PelajaranResponse();
@@ -99,16 +54,8 @@ public class Topik_Mata_PelajaranServiceImpl implements Topik_Mata_PelajaranServ
         Mata_Pelajaran mataPelajaran = mataPelajaranRepository.findById(request.getMataPelajaranId())
                 .orElseThrow(() -> new NotFoundException("Mata Pelajaran", request.getMataPelajaranId()));
 
-        checkPermissionFromMataPelajaranKatalog(mataPelajaran.getId());
+        permissionChecker.checkMataPelajaranPengajar(mataPelajaran.getId());
         tpk.setMataPelajaran(mataPelajaran);
-        
-        if (request.getMataPelajaranId() != null) {
-            tpk.setMataPelajaran(
-                mataPelajaranRepository.findById(request.getMataPelajaranId())
-                    .orElseThrow(() -> new NotFoundException("Mata Pelajaran", request.getMataPelajaranId()))
-            );
-        }
-
         return convertToResponse(topikRepository.save(tpk));
     }
 
@@ -117,17 +64,9 @@ public class Topik_Mata_PelajaranServiceImpl implements Topik_Mata_PelajaranServ
         Topik_Mata_Pelajaran tpk = topikRepository.findById(id)
             .orElseThrow(() -> new NotFoundException("Topik", id));
 
-        checkPermission(tpk);
+        permissionChecker.checkTopikPengajar(id);
 
         if (request.getNama_topik() != null ) tpk.setNama_topik(request.getNama_topik());
-
-        if (request.getMataPelajaranId() != null) {
-            tpk.setMataPelajaran(
-                mataPelajaranRepository.findById(request.getMataPelajaranId())
-                    .orElseThrow(() -> new NotFoundException("Mata Pelajaran", request.getMataPelajaranId()))
-            );
-        }
-
         return convertToResponse(topikRepository.save(tpk));
     }
 
@@ -136,7 +75,7 @@ public class Topik_Mata_PelajaranServiceImpl implements Topik_Mata_PelajaranServ
         Topik_Mata_Pelajaran tpk = topikRepository.findById(id)
             .orElseThrow(() -> new NotFoundException("Topik", id));
 
-        checkPermission(tpk);
+        permissionChecker.checkTopikPengajar(id);
         topikRepository.delete(tpk);
     }
 

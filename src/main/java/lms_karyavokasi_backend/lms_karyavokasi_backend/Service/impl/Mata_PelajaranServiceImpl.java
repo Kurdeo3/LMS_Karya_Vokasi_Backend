@@ -5,9 +5,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -22,7 +19,7 @@ import lms_karyavokasi_backend.lms_karyavokasi_backend.Repository.E_KatalogRepos
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Repository.Kategori_Mata_PelajaranRepository;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Repository.Mata_PelajaranRepository;
 import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.Mata_PelajaranService;
-import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.PengajarService;
+import lms_karyavokasi_backend.lms_karyavokasi_backend.Service.PermissionChecker;
 
 @Service
 public class Mata_PelajaranServiceImpl implements Mata_PelajaranService{
@@ -39,50 +36,7 @@ public class Mata_PelajaranServiceImpl implements Mata_PelajaranService{
     private FileStorageService fileStorageService;
 
     @Autowired
-    private PengajarService pengajarService;
-
-    private void checkPermission(Mata_Pelajaran mp) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-
-        boolean isAdmin = auth.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMINISTRATOR"));
-
-        if (isAdmin) return; // admin bebas
-
-        if (mp.getEKatalog() == null || mp.getEKatalog().getPengajar() == null) {
-            throw new AccessDeniedException("Mata Pelajaran tidak memiliki pengajar yang valid (hanya admin yang dapat mengubah)");
-        }
-
-        Long currentPengajarId = pengajarService.getCurrentPengajar().getId();
-        if (!mp.getEKatalog().getPengajar().getId().equals(currentPengajarId)) {
-            throw new AccessDeniedException("Anda tidak punya akses ke Mata Pelajaran ini");
-        }
-    }
-
-    private void checkPermissionFromEKatalog(Long eKatalogId) {
-        E_Katalog eKatalog = eKatalogRepository.findById(eKatalogId)
-                .orElseThrow(() -> new NotFoundException("E_Katalog", eKatalogId));
-        if (eKatalog.getPengajar() == null) {
-            // jika tidak ada pengajar → hanya admin boleh
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            boolean isAdmin = auth.getAuthorities().stream()
-                    .anyMatch(a -> a.getAuthority().equals("ROLE_ADMINISTRATOR"));
-            if (!isAdmin) throw new AccessDeniedException("E_Katalog tidak punya pengajar, hanya admin bisa menautkan");
-            return;
-        }
-
-        Long ownerPengajarId = eKatalog.getPengajar().getId();
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        boolean isAdmin = auth.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMINISTRATOR"));
-        if (isAdmin) return;
-
-        Long currentPengajarId = pengajarService.getCurrentPengajar().getId();
-        if (!currentPengajarId.equals(ownerPengajarId)) {
-            throw new AccessDeniedException("Anda tidak punya akses terhadap E_Katalog ini");
-        }
-    }
-
+    private PermissionChecker permissionChecker;
 
     private Mata_PelajaranResponse convertToResponse(Mata_Pelajaran mp) {
         Mata_PelajaranResponse response = new Mata_PelajaranResponse();
@@ -111,6 +65,17 @@ public class Mata_PelajaranServiceImpl implements Mata_PelajaranService{
         mp.setNamaMataPelajaran(request.getNamaMataPelajaran());
         mp.setDeskripsi(request.getDeskripsi());
 
+        // 3 Ambil E_Katalog terkait
+        if (request.getEKatalogId() == null) {
+            throw new BadRequestException("eKatalogId wajib diisi saat membuat Mata Pelajaran");
+        }
+
+        E_Katalog eKatalog = eKatalogRepository.findById(request.getEKatalogId())
+                .orElseThrow(() -> new NotFoundException("E_Katalog", request.getEKatalogId()));
+
+        permissionChecker.checkEKatalogPengajar(eKatalog.getId());
+        mp.setEKatalog(eKatalog);
+
         // 2 Upload thumbnail dulu (jika ada)
         if (thumbnailFile != null && !thumbnailFile.isEmpty()) {
             try {
@@ -121,17 +86,6 @@ public class Mata_PelajaranServiceImpl implements Mata_PelajaranService{
         } else {
             throw new BadRequestException("Thumbnail wajib diisi");
         }
-
-        // 3 Ambil E_Katalog terkait
-        if (request.getEKatalogId() == null) {
-            throw new BadRequestException("eKatalogId wajib diisi saat membuat Mata Pelajaran");
-        }
-
-        E_Katalog eKatalog = eKatalogRepository.findById(request.getEKatalogId())
-                .orElseThrow(() -> new NotFoundException("E_Katalog", request.getEKatalogId()));
-
-        checkPermissionFromEKatalog(eKatalog.getId());
-        mp.setEKatalog(eKatalog);
 
         // 4 Ambil Kategori jika ada
         if (request.getKategoriId() != null) {
@@ -151,7 +105,7 @@ public class Mata_PelajaranServiceImpl implements Mata_PelajaranService{
         Mata_Pelajaran mp = mataPelajaranRepository.findById(id)
             .orElseThrow(() -> new NotFoundException("Mata Pelajaran", id));
 
-        checkPermission(mp);
+        permissionChecker.checkMataPelajaranPengajar(id);
 
         if (request.getNamaMataPelajaran() != null) mp.setNamaMataPelajaran(request.getNamaMataPelajaran());
         if (request.getDeskripsi() != null) mp.setDeskripsi(request.getDeskripsi());
@@ -161,13 +115,6 @@ public class Mata_PelajaranServiceImpl implements Mata_PelajaranService{
                 kategoriRepository.findById(request.getKategoriId())
                     .orElseThrow(() -> new NotFoundException("Kategori Mata Pelajaran", request.getKategoriId()))
             );
-        }
-
-        if (request.getEKatalogId() != null) {
-            var eKatalog = eKatalogRepository.findById(request.getEKatalogId())
-                    .orElseThrow(() -> new NotFoundException("E_Katalog", request.getEKatalogId()));
-            checkPermissionFromEKatalog(eKatalog.getId());
-            mp.setEKatalog(eKatalog);
         }
 
         if (thumbnailFile != null && !thumbnailFile.isEmpty()) {
@@ -186,7 +133,7 @@ public class Mata_PelajaranServiceImpl implements Mata_PelajaranService{
     public void deleteMataPelajaran(Long id) {
         Mata_Pelajaran mp = mataPelajaranRepository.findById(id)
             .orElseThrow(() -> new NotFoundException("Mata Pelajaran", id));
-        checkPermission(mp); 
+        permissionChecker.checkMataPelajaranPengajar(id);
         fileStorageService.deleteFile(mp.getThumbnail());
         mataPelajaranRepository.delete(mp);
     }
